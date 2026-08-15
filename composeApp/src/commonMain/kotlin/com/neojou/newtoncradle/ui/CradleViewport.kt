@@ -42,7 +42,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.neojou.newtoncradle.Res
+import com.neojou.newtoncradle.audio.loadCollisionWav
 import com.neojou.newtoncradle.audio.playCollision
+import com.neojou.newtoncradle.audio.unlockAudio
 import com.neojou.newtoncradle.render.RayTracer
 import com.neojou.newtoncradle.render.Textures
 import com.neojou.newtoncradle.render.decodeImageBytes
@@ -87,6 +89,7 @@ fun CradleViewport(
             Textures.sasa = decodeImageBytes(Res.readBytes("files/kamon_sasa.jpg"))
             Textures.hikiryo = decodeImageBytes(Res.readBytes("files/kamon_hikiryo.jpg"))
             Textures.kuyou = decodeImageBytes(Res.readBytes("files/kamon_kuyou.jpg"))
+            loadCollisionWav(Res.readBytes("files/clang.wav"))
         }
         if (!isWasmTarget()) focusRequester.requestFocus()
         var lastNs = 0L
@@ -245,6 +248,7 @@ fun CradleViewport(
                 .pointerInput(minTouchPx, touchFriendly) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        unlockAudio()
                         val size = viewSizeRef.value
                         val idx = nearestEndBall(
                             offset = down.position,

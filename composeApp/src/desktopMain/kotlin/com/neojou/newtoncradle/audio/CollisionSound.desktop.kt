@@ -1,62 +1,72 @@
 package com.neojou.newtoncradle.audio
 
+import java.io.ByteArrayInputStream
+import java.util.concurrent.atomic.AtomicReference
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.DataLine
+import javax.sound.sampled.FloatControl
 import javax.sound.sampled.SourceDataLine
-import kotlin.math.exp
-import kotlin.math.sin
-import kotlin.random.Random
+import kotlin.concurrent.thread
+
+private val wavBytes = AtomicReference<ByteArray?>(null)
+private val pcm = AtomicReference<Pcm?>(null)
+
+private data class Pcm(
+    val samples: ByteArray,
+    val format: AudioFormat,
+)
+
+actual fun unlockAudio() {
+    // Desktop has no gesture lock.
+}
+
+actual fun loadCollisionWav(bytes: ByteArray) {
+    wavBytes.set(bytes)
+    runCatching { pcm.set(decodeWav(bytes)) }
+}
 
 actual fun playCollision(strength: Float) {
     val s = strength.coerceIn(0.15f, 1f)
-    Thread({
+    thread(name = "cradle-clang", isDaemon = true) {
         try {
             playSync(s)
         } catch (_: Throwable) {
         }
-    }, "cradle-clang").apply {
-        isDaemon = true
-        start()
     }
 }
 
 private fun playSync(strength: Float) {
-    val sampleRate = 44100f
-    val n = (sampleRate * 0.20f).toInt()
-    val pcm = synthesize(n, sampleRate, strength)
-    val format = AudioFormat(sampleRate, 16, 1, true, false)
-    val info = DataLine.Info(SourceDataLine::class.java, format)
+    val sound = pcm.get() ?: wavBytes.get()?.let { decodeWav(it).also(pcm::set) } ?: return
+    val info = DataLine.Info(SourceDataLine::class.java, sound.format)
     val line = AudioSystem.getLine(info) as SourceDataLine
-    line.open(format, pcm.size)
+    line.open(sound.format, sound.samples.size)
+    if (line.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+        val gain = line.getControl(FloatControl.Type.MASTER_GAIN) as FloatControl
+        val db = (20.0 * kotlin.math.log10((0.42 + 0.58 * strength).toDouble())).toFloat()
+        gain.value = db.coerceIn(gain.minimum, gain.maximum)
+    }
     line.start()
-    line.write(pcm, 0, pcm.size)
+    line.write(sound.samples, 0, sound.samples.size)
     line.drain()
     line.stop()
     line.close()
 }
 
-private fun synthesize(n: Int, sampleRate: Float, strength: Float): ByteArray {
-    val out = ByteArray(n * 2)
-    val twoPi = (2.0 * kotlin.math.PI).toFloat()
-    val f0 = 1920f + 380f * strength
-    val freqs = floatArrayOf(f0, f0 * 1.49f, f0 * 2.23f, f0 * 3.41f, f0 * 4.87f)
-    val amps = floatArrayOf(0.40f, 0.28f, 0.16f, 0.10f, 0.06f)
-    val decays = floatArrayOf(16f, 21f, 27f, 38f, 52f)
-    val rng = Random.Default
-    for (i in 0 until n) {
-        val t = i / sampleRate
-        var v = 0f
-        for (k in freqs.indices) {
-            v += amps[k] * sin(twoPi * freqs[k] * t) * exp(-decays[k] * t)
-        }
-        if (t < 0.011f) {
-            v += (rng.nextFloat() * 2f - 1f) * (1f - t / 0.011f) * 0.20f
-        }
-        v = (v * 0.62f * strength).coerceIn(-1f, 1f)
-        val iv = (v * 32767f).toInt()
-        out[i * 2] = (iv and 0xFF).toByte()
-        out[i * 2 + 1] = ((iv shr 8) and 0xFF).toByte()
-    }
-    return out
+/** Minimal PCM WAV reader (16-bit little-endian, mono or stereo). */
+private fun decodeWav(bytes: ByteArray): Pcm {
+    val stream = AudioSystem.getAudioInputStream(ByteArrayInputStream(bytes))
+    val base = stream.format
+    val pcm16 = AudioFormat(
+        AudioFormat.Encoding.PCM_SIGNED,
+        base.sampleRate,
+        16,
+        base.channels,
+        base.channels * 2,
+        base.sampleRate,
+        false,
+    )
+    val converted = if (base.matches(pcm16)) stream else AudioSystem.getAudioInputStream(pcm16, stream)
+    val samples = converted.readAllBytes()
+    return Pcm(samples, converted.format)
 }

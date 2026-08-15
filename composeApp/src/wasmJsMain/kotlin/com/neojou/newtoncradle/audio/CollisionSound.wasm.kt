@@ -4,47 +4,82 @@ import kotlin.js.ExperimentalWasmJsInterop
 import kotlin.js.js
 
 @OptIn(ExperimentalWasmJsInterop::class)
+actual fun unlockAudio() {
+    js(
+        """
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        const ctx = window.__ncAudio || (window.__ncAudio = new AC());
+        window.__ncAudio = ctx;
+        const resume = () => { try { ctx.resume(); } catch (e) {} };
+        resume();
+
+        // iOS: a silent buffer started in this gesture keeps the context alive.
+        try {
+          const silent = ctx.createBuffer(1, 1, 22050);
+          const src = ctx.createBufferSource();
+          src.buffer = silent;
+          src.connect(ctx.destination);
+          src.start(0);
+        } catch (e) {}
+
+        // Also poke HTMLAudio during the gesture (Safari is picky).
+        try {
+          if (!window.__ncAudioEl) {
+            const el = new Audio('clang.wav');
+            el.preload = 'auto';
+            el.volume = 0.001;
+            window.__ncAudioEl = el;
+            const p = el.play();
+            if (p && p.then) {
+              p.then(() => { el.pause(); el.currentTime = 0; el.volume = 1; }).catch(() => {});
+            }
+          }
+        } catch (e) {}
+
+        if (!window.__ncClangLoading) {
+          window.__ncClangLoading = true;
+          fetch('clang.wav').then(r => r.arrayBuffer()).then(buf => {
+            return ctx.decodeAudioData(buf);
+          }).then(audio => {
+            window.__ncClang = audio;
+          }).catch(() => { window.__ncClangLoading = false; });
+        }
+        """
+    )
+}
+
+@OptIn(ExperimentalWasmJsInterop::class)
 actual fun playCollision(strength: Float) {
     js(
         """
         const s = Math.max(0.15, Math.min(1, strength));
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (!AC) return;
-        const ctx = window.__ncAudio || (window.__ncAudio = new AC());
-        if (ctx.state === 'suspended') ctx.resume();
-        const t0 = ctx.currentTime;
-        const dur = 0.15 + 0.07 * s;
-        const master = ctx.createGain();
-        master.gain.setValueAtTime(0.24 * s, t0);
-        master.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
-        master.connect(ctx.destination);
-        const f0 = 1920 + 380 * s;
-        const freqs = [f0, f0 * 1.49, f0 * 2.23, f0 * 3.41, f0 * 4.87];
-        freqs.forEach((f, i) => {
-          const o = ctx.createOscillator();
-          o.type = i < 2 ? 'triangle' : 'sine';
-          o.frequency.setValueAtTime(f, t0);
-          o.frequency.exponentialRampToValueAtTime(f * 0.93, t0 + dur);
+        const ctx = window.__ncAudio;
+        const buf = window.__ncClang;
+        if (ctx) {
+          try { ctx.resume(); } catch (e) {}
+        }
+        if (ctx && buf) {
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.playbackRate.value = 0.97 + 0.08 * s;
           const g = ctx.createGain();
-          g.gain.setValueAtTime(0.42 / (i + 1), t0);
-          g.gain.exponentialRampToValueAtTime(0.001, t0 + dur * (0.5 + 0.08 * i));
-          o.connect(g);
-          g.connect(master);
-          o.start(t0);
-          o.stop(t0 + dur);
-        });
-        const nLen = Math.floor(ctx.sampleRate * 0.016);
-        const buf = ctx.createBuffer(1, nLen, ctx.sampleRate);
-        const data = buf.getChannelData(0);
-        for (let i = 0; i < nLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / nLen);
-        const src = ctx.createBufferSource();
-        src.buffer = buf;
-        const ng = ctx.createGain();
-        ng.gain.setValueAtTime(0.16 * s, t0);
-        ng.gain.exponentialRampToValueAtTime(0.001, t0 + 0.028);
-        src.connect(ng);
-        ng.connect(ctx.destination);
-        src.start(t0);
+          g.gain.value = 0.38 + 0.62 * s;
+          src.connect(g);
+          g.connect(ctx.destination);
+          src.start();
+        } else if (window.__ncAudioEl) {
+          try {
+            const a = window.__ncAudioEl.cloneNode(true);
+            a.volume = Math.max(0.2, Math.min(1, 0.4 + 0.6 * s));
+            a.playbackRate = 0.97 + 0.08 * s;
+            a.play();
+          } catch (e) {}
+        }
         """
     )
+}
+
+actual fun loadCollisionWav(bytes: ByteArray) {
+    // Wasm plays clang.wav via fetch so the browser can cache/decode it.
 }
