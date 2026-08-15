@@ -3,7 +3,9 @@ package com.neojou.newtoncradle.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -34,6 +36,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -67,6 +70,9 @@ fun CradleViewport(
     val tracer = remember { RayTracer() }
     val governor = remember { QualityGovernor(if (isWasmTarget()) 0.34f else 0.48f) }
     val focusRequester = remember { FocusRequester() }
+    val density = LocalDensity.current
+    val minTouchPx = with(density) { 56.dp.toPx() }
+    val touchFriendly = isWasmTarget()
     val viewSizeRef = remember { mutableStateOf(IntSize(640, 400)) }
     val snapRef = remember { mutableStateOf(physics.snapshot()) }
 
@@ -82,7 +88,7 @@ fun CradleViewport(
             Textures.hikiryo = decodeImageBytes(Res.readBytes("files/kamon_hikiryo.jpg"))
             Textures.kuyou = decodeImageBytes(Res.readBytes("files/kamon_kuyou.jpg"))
         }
-        focusRequester.requestFocus()
+        if (!isWasmTarget()) focusRequester.requestFocus()
         var lastNs = 0L
         var accLog = 0f
         var frames = 0
@@ -127,7 +133,6 @@ fun CradleViewport(
             .clipToBounds()
             .focusRequester(focusRequester)
             .focusable()
-            .pointerHoverIcon(PointerIcon.Hand)
             .onSizeChanged { viewSizeRef.value = it }
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyUp) return@onKeyEvent false
@@ -144,33 +149,6 @@ fun CradleViewport(
                     }
                     else -> false
                 }
-            }
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        val size = viewSizeRef.value
-                        val idx = nearestEndBall(offset, size, snapRef.value, tracer)
-                        if (idx >= 0) {
-                            physics.tryGrab(idx)
-                            applyDrag(offset, size, physics, tracer)
-                            hintVisible = false
-                        } else if (physics.holding) {
-                            applyDrag(offset, size, physics, tracer)
-                            hintVisible = false
-                        }
-                    },
-                    onDrag = { change, _ ->
-                        if (physics.holding) {
-                            applyDrag(change.position, viewSizeRef.value, physics, tracer)
-                        }
-                    },
-                    onDragEnd = {
-                        if (physics.holding) physics.release()
-                    },
-                    onDragCancel = {
-                        if (physics.holding) physics.release()
-                    },
-                )
             },
     ) {
         val image = frame
@@ -244,9 +222,9 @@ fun CradleViewport(
 
         if (hintVisible || physics.holding) {
             val label = if (physics.holding) {
-                "可拉到水平 90°，放開後擺動 · Space 放下 · R 重置"
+                if (touchFriendly) "按住往上拉到水平，放開後擺動" else "可拉到水平 90°，放開後擺動 · Space 放下 · R 重置"
             } else {
-                "拖曳兩側鋼球，最高可拉到水平 · Space / R 重置"
+                if (touchFriendly) "用手指按住兩側鋼球往上拉" else "拖曳兩側鋼球，最高可拉到水平 · Space / R 重置"
             }
             Text(
                 text = label,
@@ -258,6 +236,41 @@ fun CradleViewport(
                     .padding(bottom = 18.dp),
             )
         }
+
+        // Topmost hit target so Image/Canvas cannot swallow the finger.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .pointerHoverIcon(PointerIcon.Hand)
+                .pointerInput(minTouchPx, touchFriendly) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val size = viewSizeRef.value
+                        val idx = nearestEndBall(
+                            offset = down.position,
+                            viewSize = size,
+                            snap = snapRef.value,
+                            tracer = tracer,
+                            minHitPx = minTouchPx,
+                            generous = touchFriendly,
+                        )
+                        if (idx < 0 && !physics.holding) {
+                            return@awaitEachGesture
+                        }
+                        if (idx >= 0) physics.tryGrab(idx)
+                        applyDrag(down.position, size, physics, tracer)
+                        hintVisible = false
+                        down.consume()
+                        drag(down.id) { change ->
+                            change.consume()
+                            if (physics.holding) {
+                                applyDrag(change.position, viewSizeRef.value, physics, tracer)
+                            }
+                        }
+                        if (physics.holding) physics.release()
+                    }
+                },
+        )
     }
 }
 
@@ -295,19 +308,38 @@ private fun nearestEndBall(
     viewSize: IntSize,
     snap: CradleSnapshot,
     tracer: RayTracer,
+    minHitPx: Float,
+    generous: Boolean,
 ): Int {
     val w = viewSize.width.toFloat()
     val h = viewSize.height.toFloat()
+    if (w < 8f || h < 8f) return -1
     var best = -1
     var bestD = Float.MAX_VALUE
     val ends = intArrayOf(0, Cradle.BALLS - 1)
+    val pad = if (generous) 2.8f else 1.55f
     for (i in ends) {
         val c = ballCenter(i, snap.theta[i])
         val p = tracer.camera.project(c, w, h) ?: continue
         val d = hypot(p.first - offset.x, p.second - offset.y)
         val rim = tracer.camera.project(Vec3(c.x + Cradle.RADIUS, c.y, c.z), w, h)
         val radius = if (rim != null) abs(rim.first - p.first) else 40f
-        if (d < radius * 1.55f && d < bestD) {
+        val hitR = maxOf(radius * pad, minHitPx)
+        if (d < hitR && d < bestD) {
+            bestD = d
+            best = i
+        }
+    }
+    if (best >= 0) return best
+    if (!generous) return -1
+    // Finger often lands beside a small projected ball — take the nearer end
+    // if the touch is still in the cradle neighbourhood.
+    val neighbourhood = maxOf(minHitPx * 2.4f, minOf(w, h) * 0.28f)
+    for (i in ends) {
+        val c = ballCenter(i, snap.theta[i])
+        val p = tracer.camera.project(c, w, h) ?: continue
+        val d = hypot(p.first - offset.x, p.second - offset.y)
+        if (d < neighbourhood && d < bestD) {
             bestD = d
             best = i
         }
