@@ -31,11 +31,13 @@ object Cradle {
     const val BASE_HALF_X = 14.4f
     const val BASE_HALF_Z = 7.35f
     const val FLOOR_Y = -7.62f
+    const val MIRROR_Y = -6.505f
+    const val BACK_WALL_Z = -11.2f
 
     /** Tuned for a ~1 s period with the current swing length. */
     const val GRAVITY = 402f
 
-    val MAX_ANGLE: Float = 50f * (PI.toFloat() / 180f)
+    val MAX_ANGLE: Float = 90f * (PI.toFloat() / 180f)
 
     const val MASS = 1f
 

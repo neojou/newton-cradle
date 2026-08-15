@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.neojou.newtoncradle.audio.playCollision
 import com.neojou.newtoncradle.render.RayTracer
 import com.neojou.newtoncradle.render.isWasmTarget
 import com.neojou.newtoncradle.sim.Cradle
@@ -60,7 +61,7 @@ fun CradleViewport(
     modifier: Modifier = Modifier,
 ) {
     val tracer = remember { RayTracer() }
-    val governor = remember { QualityGovernor(if (isWasmTarget()) 0.40f else 0.55f) }
+    val governor = remember { QualityGovernor(if (isWasmTarget()) 0.34f else 0.48f) }
     val focusRequester = remember { FocusRequester() }
     val viewSizeRef = remember { mutableStateOf(IntSize(640, 400)) }
     val snapRef = remember { mutableStateOf(physics.snapshot()) }
@@ -84,6 +85,8 @@ fun CradleViewport(
                 lastNs = now
                 val mark = TimeSource.Monotonic.markNow()
                 physics.step(dt)
+                val impact = physics.takeImpact()
+                if (impact > 0f) playCollision(impact)
                 val s = physics.snapshot()
                 snap = s
                 snapRef.value = s
@@ -230,9 +233,9 @@ fun CradleViewport(
 
         if (hintVisible || physics.holding) {
             val label = if (physics.holding) {
-                "拖曳調整高度，放開後擺動 · Space 放下 · R 重置"
+                "可拉到水平 90°，放開後擺動 · Space 放下 · R 重置"
             } else {
-                "拖曳兩側鋼球再放開 · Space 重置"
+                "拖曳兩側鋼球，最高可拉到水平 · Space / R 重置"
             }
             Text(
                 text = label,
@@ -253,9 +256,9 @@ private class QualityGovernor(initial: Float) {
 
     fun report(frameMs: Float) {
         quality = when {
-            frameMs > 36f -> (quality * 0.92f).coerceAtLeast(0.36f)
-            frameMs > 30f -> (quality * 0.98f).coerceAtLeast(0.36f)
-            frameMs < 20f -> (quality + 0.028f).coerceAtMost(1f)
+            frameMs > 32f -> (quality * 0.90f).coerceAtLeast(0.26f)
+            frameMs > 26f -> (quality * 0.97f).coerceAtLeast(0.26f)
+            frameMs < 18f -> (quality + 0.03f).coerceAtMost(1f)
             else -> quality
         }
     }

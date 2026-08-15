@@ -17,15 +17,17 @@ class CradlePhysics {
     val theta = FloatArray(Cradle.BALLS)
     val omega = FloatArray(Cradle.BALLS)
 
-    var holding: Boolean = true
+    var holding: Boolean = false
         private set
     var holdIndex: Int = 0
         private set
-    var handPhase: Float = 1f
+    var handPhase: Float = 0f
         private set
 
     private var energyLock = 0f
     private var lockEnergy = false
+    private var impactStrength = 0f
+    private var impactCooldown = 0f
 
     init {
         reset()
@@ -36,12 +38,20 @@ class CradlePhysics {
             theta[i] = 0f
             omega[i] = 0f
         }
-        theta[0] = -38f * (kotlin.math.PI.toFloat() / 180f)
-        holding = true
+        holding = false
         holdIndex = 0
-        handPhase = 1f
+        handPhase = 0f
         lockEnergy = false
         energyLock = 0f
+        impactStrength = 0f
+        impactCooldown = 0f
+    }
+
+    /** Strength in 0..1 of the most recent click, then clears. */
+    fun takeImpact(): Float {
+        val s = impactStrength
+        impactStrength = 0f
+        return s
     }
 
     fun snapshot(): CradleSnapshot = CradleSnapshot(
@@ -88,6 +98,7 @@ class CradlePhysics {
      */
     fun step(dt: Float) {
         val clamped = dt.coerceIn(0f, 0.05f)
+        if (impactCooldown > 0f) impactCooldown -= clamped
         if (!holding) {
             handPhase = (handPhase - clamped / 0.42f).coerceAtLeast(0f)
         } else {
@@ -151,6 +162,7 @@ class CradlePhysics {
                 val w = omega[i]
                 omega[i] = omega[k]
                 omega[k] = w
+                registerImpact(w)
                 i = k
             } else {
                 i++
@@ -174,11 +186,19 @@ class CradlePhysics {
                 val w = omega[j]
                 omega[j] = omega[k]
                 omega[k] = w
+                registerImpact(w)
                 j = k
             } else {
                 j--
             }
         }
+    }
+
+    private fun registerImpact(omegaIncoming: Float) {
+        if (impactCooldown > 0f) return
+        val s = (kotlin.math.abs(omegaIncoming) / 9.2f).coerceIn(0.18f, 1f)
+        if (s > impactStrength) impactStrength = s
+        impactCooldown = 0.048f
     }
 
     private fun inContact(i: Int, j: Int, slack: Float): Boolean {

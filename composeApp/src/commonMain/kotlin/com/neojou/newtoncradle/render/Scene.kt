@@ -14,6 +14,7 @@ internal const val MAT_MIRROR = 6
 internal const val MAX_SPHERES = 24
 internal const val MAX_CYLINDERS = 8
 internal const val MAX_BOXES = 10
+internal const val MAX_PLANES = 4
 
 /**
  * Packed analytic primitives. Rebuilt each frame from the physics snapshot;
@@ -46,12 +47,26 @@ internal class Scene {
     val bMat = IntArray(MAX_BOXES)
     var boxCount = 0
 
+    val pNx = FloatArray(MAX_PLANES)
+    val pNy = FloatArray(MAX_PLANES)
+    val pNz = FloatArray(MAX_PLANES)
+    val pD = FloatArray(MAX_PLANES)
+    val pMinX = FloatArray(MAX_PLANES)
+    val pMaxX = FloatArray(MAX_PLANES)
+    val pMinY = FloatArray(MAX_PLANES)
+    val pMaxY = FloatArray(MAX_PLANES)
+    val pMinZ = FloatArray(MAX_PLANES)
+    val pMaxZ = FloatArray(MAX_PLANES)
+    val pMat = IntArray(MAX_PLANES)
+    var planeCount = 0
+
     var floorY = Cradle.FLOOR_Y
 
     fun clearDynamic() {
         sphereCount = 0
         cylinderCount = 0
         boxCount = 0
+        planeCount = 0
     }
 
     fun addSphere(x: Float, y: Float, z: Float, r: Float, mat: Int) {
@@ -100,6 +115,29 @@ internal class Scene {
         boxCount = i + 1
     }
 
+    fun addPlane(
+        nx: Float, ny: Float, nz: Float, d: Float,
+        minX: Float, maxX: Float,
+        minY: Float, maxY: Float,
+        minZ: Float, maxZ: Float,
+        mat: Int,
+    ) {
+        val i = planeCount
+        if (i >= MAX_PLANES) return
+        pNx[i] = nx
+        pNy[i] = ny
+        pNz[i] = nz
+        pD[i] = d
+        pMinX[i] = minX
+        pMaxX[i] = maxX
+        pMinY[i] = minY
+        pMaxY[i] = maxY
+        pMinZ[i] = minZ
+        pMaxZ[i] = maxZ
+        pMat[i] = mat
+        planeCount = i + 1
+    }
+
     fun rebuild(snap: CradleSnapshot) {
         clearDynamic()
 
@@ -124,12 +162,7 @@ internal class Scene {
             Cradle.BASE_HALF_X, top, Cradle.BASE_HALF_Z,
             MAT_WOOD,
         )
-        // Full-size mirror slab — reflects the undersides of the balls.
-        addBox(
-            -Cradle.BASE_HALF_X + 0.03f, top - 0.015f, -Cradle.BASE_HALF_Z + 0.03f,
-            Cradle.BASE_HALF_X - 0.03f, top + 0.075f, Cradle.BASE_HALF_Z - 0.03f,
-            MAT_MIRROR,
-        )
+        addMirrors()
 
         val ph = Cradle.POST_HALF
         val px = Cradle.POST_X
@@ -147,5 +180,36 @@ internal class Scene {
         val rodR = Cradle.ROD_RADIUS
         addCylinder(-px - 0.12f, rodY, -bz, px + 0.12f, rodY, -bz, rodR, MAT_STEEL)
         addCylinder(-px - 0.12f, rodY, bz, px + 0.12f, rodY, bz, rodR, MAT_STEEL)
+    }
+
+    /**
+     * Planar mirrors used by the single-path specular walker.
+     * Perfect planes do not branch: the ray is folded and continues.
+     */
+    private fun addMirrors() {
+        val y = Cradle.MIRROR_Y
+        addPlane(
+            0f, 1f, 0f, y,
+            -Cradle.BASE_HALF_X + 0.04f, Cradle.BASE_HALF_X - 0.04f,
+            y - 0.02f, y + 0.02f,
+            -Cradle.BASE_HALF_Z + 0.04f, Cradle.BASE_HALF_Z - 0.04f,
+            MAT_MIRROR,
+        )
+        val z = Cradle.BACK_WALL_Z
+        addPlane(
+            0f, 0f, 1f, z,
+            -36f, 36f,
+            -9f, 24f,
+            z - 0.02f, z + 0.02f,
+            MAT_MIRROR,
+        )
+        val fy = Cradle.FLOOR_Y
+        addPlane(
+            0f, 1f, 0f, fy,
+            -36f, 36f,
+            fy - 0.02f, fy + 0.02f,
+            z, 22f,
+            MAT_MIRROR,
+        )
     }
 }

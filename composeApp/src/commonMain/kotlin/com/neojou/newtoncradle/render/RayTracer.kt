@@ -33,15 +33,17 @@ class RayTracer {
         scene.rebuild(snap)
 
         val q = quality.coerceIn(0.12f, 1f)
-        val maxDim = (420f + 500f * q).toInt()
+        val maxDim = (320f + 400f * q).toInt()
         val longest = maxOf(viewW, viewH).toFloat()
         val scale = (maxDim / longest).coerceAtMost(1f)
         val w = (viewW * scale).toInt().coerceAtLeast(240)
         val h = (viewH * scale).toInt().coerceAtLeast(140)
         buffer.ensure(w, h)
 
-        val maxBounce = if (q > 0.38f) 2 else 1
-        val aa = q > 0.68f && snap.isStill
+        // Planar mirrors fold a single path (no branching). Chrome is one
+        // extra specular event. 4–6 events is enough for ball ↔ base ↔ wall.
+        val maxBounce = if (q > 0.42f) 4 else 3
+        val aa = q > 0.72f && snap.isStill
         val wf = w.toFloat()
         val hf = h.toFloat()
         val cam = camera
@@ -133,12 +135,14 @@ class RayTracer {
             i++
         }
 
-        // Secondary rays only need the balls — enough for the mirror to
-        // show their undersides without tracing the whole frame again.
-        val hitStatic = bounce == 0
+        // Event 0: full scene. Later events: spheres + mirrors + frame
+        // (so the back wall can show the cradle). Cylinders only on the
+        // primary ray — they are thin and expensive.
+        val hitCyl = bounce == 0
+        val hitBoxes = bounce == 0
 
         // Cylinders
-        val cc = if (hitStatic) scene.cylinderCount else 0
+        val cc = if (hitCyl) scene.cylinderCount else 0
         i = 0
         while (i < cc) {
             val t = hitCylinder(
@@ -166,7 +170,7 @@ class RayTracer {
         }
 
         // Boxes
-        val bc = if (hitStatic) scene.boxCount else 0
+        val bc = if (hitBoxes) scene.boxCount else 0
         i = 0
         while (i < bc) {
             val t = hitAabb(
@@ -193,23 +197,29 @@ class RayTracer {
             i++
         }
 
-        // Floor plane
-        if (hitStatic && (dy < -1e-6f || dy > 1e-6f)) {
-            val t = (scene.floorY - oy) / dy
-            if (t > 1e-3f && t < bestT) {
-                val fx = ox + dx * t
-                val fz = oz + dz * t
-                if (fx * fx + fz * fz < 420f) {
-                    bestT = t
-                    hx = fx
-                    hy = scene.floorY
-                    hz = fz
-                    nx = 0f
-                    ny = 1f
-                    nz = 0f
-                    mat = MAT_FLOOR
-                }
+        // Planar mirrors — always tested so folded rays keep seeing the room
+        val pc = scene.planeCount
+        i = 0
+        while (i < pc) {
+            val t = hitPlane(
+                ox, oy, oz, dx, dy, dz,
+                scene.pNx[i], scene.pNy[i], scene.pNz[i], scene.pD[i],
+                scene.pMinX[i], scene.pMaxX[i],
+                scene.pMinY[i], scene.pMaxY[i],
+                scene.pMinZ[i], scene.pMaxZ[i],
+                bestT,
+            )
+            if (t > 0f) {
+                bestT = t
+                hx = ox + dx * t
+                hy = oy + dy * t
+                hz = oz + dz * t
+                nx = scene.pNx[i]
+                ny = scene.pNy[i]
+                nz = scene.pNz[i]
+                mat = scene.pMat[i]
             }
+            i++
         }
 
         if (mat < 0) {
@@ -307,41 +317,38 @@ class RayTracer {
 
         val ndv = (-(nx * idx + ny * idy + nz * idz)).coerceIn(0f, 1f)
         val fres = f0 + (1f - f0) * pow5(1f - ndv)
-
-        // Key + fill + rim (no allocation)
-        var lr = 0.028f
-        var lg = 0.026f
-        var lb = 0.024f
-        accumLight(px, py, pz, nx, ny, nz, -7.5f, 15.5f, 11.5f, 1.55f, 1.0f, 0.97f, 0.92f, castShadow = bounce == 0) { dr, dg, db ->
-            lr += dr
-            lg += dg
-            lb += db
-        }
-        accumLight(px, py, pz, nx, ny, nz, 11f, 8.5f, 7f, 0.32f, 0.65f, 0.78f, 1.0f, castShadow = false) { dr, dg, db ->
-            lr += dr
-            lg += dg
-            lb += db
-        }
-        accumLight(px, py, pz, nx, ny, nz, 5f, 7f, -10f, 0.42f, 1.0f, 0.82f, 0.62f, castShadow = false) { dr, dg, db ->
-            lr += dr
-            lg += dg
-            lb += db
-        }
-        // Bounce from the polished base so ball undersides stay readable in the mirror
-        val ground = (-ny).coerceAtLeast(0f) * 0.28f
-        lr += ground * 0.42f
-        lg += ground * 0.44f
-        lb += ground * 0.48f
-
         val isMirror = mat == MAT_MIRROR
+
         var r: Float
         var g: Float
         var b: Float
         if (isMirror) {
-            r = 0.018f * lr
-            g = 0.018f * lg
-            b = 0.020f * lb
+            r = 0f
+            g = 0f
+            b = 0f
         } else {
+            var lr = 0.028f
+            var lg = 0.026f
+            var lb = 0.024f
+            accumLight(px, py, pz, nx, ny, nz, -7.5f, 15.5f, 11.5f, 1.55f, 1.0f, 0.97f, 0.92f, castShadow = bounce == 0) { dr, dg, db ->
+                lr += dr
+                lg += dg
+                lb += db
+            }
+            accumLight(px, py, pz, nx, ny, nz, 11f, 8.5f, 7f, 0.32f, 0.65f, 0.78f, 1.0f, castShadow = false) { dr, dg, db ->
+                lr += dr
+                lg += dg
+                lb += db
+            }
+            accumLight(px, py, pz, nx, ny, nz, 5f, 7f, -10f, 0.42f, 1.0f, 0.82f, 0.62f, castShadow = false) { dr, dg, db ->
+                lr += dr
+                lg += dg
+                lb += db
+            }
+            val ground = (-ny).coerceAtLeast(0f) * 0.28f
+            lr += ground * 0.42f
+            lg += ground * 0.44f
+            lb += ground * 0.48f
             r = ar * lr
             g = ag * lg
             b = ab * lb
@@ -361,10 +368,8 @@ class RayTracer {
             val ox = px + nx * 0.0025f
             val oy = py + ny * 0.0025f
             val oz = pz + nz * 0.0025f
-            val forceMirrorBounce = isMirror && bounce == 0
-            if (bounce < maxBounce || forceMirrorBounce) {
-                val nextMax = if (forceMirrorBounce) maxOf(maxBounce, 1) else maxBounce
-                trace(ox, oy, oz, rdx, rdy, rdz, bounce + 1, nextMax)
+            if (bounce < maxBounce) {
+                trace(ox, oy, oz, rdx, rdy, rdz, bounce + 1, maxBounce)
             } else {
                 StudioEnv.sample(rdx, rdy, rdz, envR, envG, envB, 0)
             }
@@ -491,6 +496,26 @@ class RayTracer {
         }
         return nTmp
     }
+}
+
+private fun hitPlane(
+    ox: Float, oy: Float, oz: Float,
+    dx: Float, dy: Float, dz: Float,
+    nx: Float, ny: Float, nz: Float, d: Float,
+    minX: Float, maxX: Float,
+    minY: Float, maxY: Float,
+    minZ: Float, maxZ: Float,
+    tMax: Float,
+): Float {
+    val denom = nx * dx + ny * dy + nz * dz
+    if (denom > -1e-6f && denom < 1e-6f) return -1f
+    val t = (d - (nx * ox + ny * oy + nz * oz)) / denom
+    if (t < 1e-3f || t >= tMax) return -1f
+    val px = ox + dx * t
+    val py = oy + dy * t
+    val pz = oz + dz * t
+    if (px < minX || px > maxX || py < minY || py > maxY || pz < minZ || pz > maxZ) return -1f
+    return t
 }
 
 private fun hitSphere(
