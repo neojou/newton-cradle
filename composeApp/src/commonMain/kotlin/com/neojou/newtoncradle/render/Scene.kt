@@ -9,6 +9,7 @@ internal const val MAT_WOOD = 2
 internal const val MAT_CERAMIC = 3
 internal const val MAT_FLOOR = 4
 internal const val MAT_GUNMETAL = 5
+internal const val MAT_MIRROR = 6
 
 internal const val MAX_SPHERES = 24
 internal const val MAX_CYLINDERS = 8
@@ -123,11 +124,11 @@ internal class Scene {
             Cradle.BASE_HALF_X, top, Cradle.BASE_HALF_Z,
             MAT_WOOD,
         )
-        // Thin polished plate on the base
+        // Full-size mirror slab — reflects the undersides of the balls.
         addBox(
-            -Cradle.BASE_HALF_X + 0.18f, top - 0.01f, -Cradle.BASE_HALF_Z + 0.18f,
-            Cradle.BASE_HALF_X - 0.18f, top + 0.06f, Cradle.BASE_HALF_Z - 0.18f,
-            MAT_GUNMETAL,
+            -Cradle.BASE_HALF_X + 0.03f, top - 0.015f, -Cradle.BASE_HALF_Z + 0.03f,
+            Cradle.BASE_HALF_X - 0.03f, top + 0.075f, Cradle.BASE_HALF_Z - 0.03f,
+            MAT_MIRROR,
         )
 
         val ph = Cradle.POST_HALF

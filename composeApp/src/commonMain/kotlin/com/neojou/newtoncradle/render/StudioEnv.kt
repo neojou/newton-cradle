@@ -21,6 +21,12 @@ internal object StudioEnv {
             b += floor * 0.014f
         }
 
+        // Broad ceiling card so chrome still reads as metal from above
+        val ceiling = blob(dx, dy, dz, 0.02f, 0.93f, 0.12f, 0.72f, 0.16f, 0.58f)
+        r += ceiling * 1.85f
+        g += ceiling * 1.78f
+        b += ceiling * 1.66f
+
         // Overhead softbox
         val box = blob(dx, dy, dz, 0.04f, 0.84f, 0.18f, 0.42f, 0.11f, 0.26f)
         r += box * 3.1f

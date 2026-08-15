@@ -7,10 +7,10 @@ import kotlin.math.tan
  * Pinhole camera shared by the tracer and pointer un-projection.
  */
 class Camera {
-    var eye = Vec3(0f, -0.85f, 27.4f)
-    var target = Vec3(0f, -3.55f, 0f)
+    var eye = Vec3(0.18f, 10.9f, 28.4f)
+    var target = Vec3(0f, -1.55f, 0.35f)
     var up = Vec3(0f, 1f, 0f)
-    var fovY = 34f * (kotlin.math.PI.toFloat() / 180f)
+    var fovY = 41.5f * (kotlin.math.PI.toFloat() / 180f)
 
     var forward = Vec3(0f, 0f, -1f)
         private set

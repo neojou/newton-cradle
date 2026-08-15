@@ -15,25 +15,25 @@ object Cradle {
     const val BALLS = 5
     const val RADIUS = 1f
 
-    const val PIVOT_Y = 4.85f
-    const val BAR_Z = 2.45f
-    const val STRING_LEN = 10.45f
+    const val PIVOT_Y = 8.35f
+    const val BAR_Z = 2.55f
+    const val STRING_LEN = 10.50f
 
     /** Planar swing length: sqrt(STRING_LEN² − BAR_Z²). */
-    const val SWING_L = 10.1587f
+    const val SWING_L = 10.1857f
 
-    const val POST_X = 9.15f
-    const val ROD_RADIUS = 0.108f
-    const val POST_HALF = 0.175f
+    const val POST_X = 9.45f
+    const val ROD_RADIUS = 0.112f
+    const val POST_HALF = 0.185f
 
-    const val BASE_TOP = -6.49f
-    const val BASE_BOTTOM = -7.28f
-    const val BASE_HALF_X = 10.55f
-    const val BASE_HALF_Z = 3.95f
-    const val FLOOR_Y = -7.28f
+    const val BASE_TOP = -6.58f
+    const val BASE_BOTTOM = -7.62f
+    const val BASE_HALF_X = 14.4f
+    const val BASE_HALF_Z = 7.35f
+    const val FLOOR_Y = -7.62f
 
-    /** Tuned for a ~1 s period (soothing, still physically pendulum-like). */
-    const val GRAVITY = 400f
+    /** Tuned for a ~1 s period with the current swing length. */
+    const val GRAVITY = 402f
 
     val MAX_ANGLE: Float = 50f * (PI.toFloat() / 180f)
 

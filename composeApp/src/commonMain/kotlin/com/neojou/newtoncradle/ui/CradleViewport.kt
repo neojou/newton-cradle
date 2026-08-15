@@ -60,7 +60,7 @@ fun CradleViewport(
     modifier: Modifier = Modifier,
 ) {
     val tracer = remember { RayTracer() }
-    val governor = remember { QualityGovernor(if (isWasmTarget()) 0.36f else 0.58f) }
+    val governor = remember { QualityGovernor(if (isWasmTarget()) 0.40f else 0.55f) }
     val focusRequester = remember { FocusRequester() }
     val viewSizeRef = remember { mutableStateOf(IntSize(640, 400)) }
     val snapRef = remember { mutableStateOf(physics.snapshot()) }
@@ -253,9 +253,9 @@ private class QualityGovernor(initial: Float) {
 
     fun report(frameMs: Float) {
         quality = when {
-            frameMs > 32f -> (quality * 0.88f).coerceAtLeast(0.14f)
-            frameMs > 26f -> (quality * 0.96f).coerceAtLeast(0.14f)
-            frameMs < 15f -> (quality + 0.03f).coerceAtMost(1f)
+            frameMs > 36f -> (quality * 0.92f).coerceAtLeast(0.36f)
+            frameMs > 30f -> (quality * 0.98f).coerceAtLeast(0.36f)
+            frameMs < 20f -> (quality + 0.028f).coerceAtMost(1f)
             else -> quality
         }
     }

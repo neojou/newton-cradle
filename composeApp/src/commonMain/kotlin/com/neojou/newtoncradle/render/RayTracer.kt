@@ -33,15 +33,15 @@ class RayTracer {
         scene.rebuild(snap)
 
         val q = quality.coerceIn(0.12f, 1f)
-        val maxDim = (300f + 420f * q).toInt()
+        val maxDim = (420f + 500f * q).toInt()
         val longest = maxOf(viewW, viewH).toFloat()
         val scale = (maxDim / longest).coerceAtMost(1f)
-        val w = (viewW * scale).toInt().coerceAtLeast(160)
-        val h = (viewH * scale).toInt().coerceAtLeast(90)
+        val w = (viewW * scale).toInt().coerceAtLeast(240)
+        val h = (viewH * scale).toInt().coerceAtLeast(140)
         buffer.ensure(w, h)
 
-        val maxBounce = if (q > 0.52f) 2 else 1
-        val aa = q > 0.82f && snap.isStill
+        val maxBounce = if (q > 0.38f) 2 else 1
+        val aa = q > 0.68f && snap.isStill
         val wf = w.toFloat()
         val hf = h.toFloat()
         val cam = camera
@@ -89,7 +89,7 @@ class RayTracer {
                 }
                 val nx = (x + 0.5f) / wf * 2f - 1f
                 val ny = (y + 0.5f) / hf * 2f - 1f
-                val vig = 1f - 0.22f * (nx * nx + ny * ny)
+                val vig = 1f - 0.14f * (nx * nx + ny * ny)
                 buffer.putLinear(x, y, r * vig, g * vig, b * vig)
             }
         }
@@ -133,8 +133,12 @@ class RayTracer {
             i++
         }
 
+        // Secondary rays only need the balls — enough for the mirror to
+        // show their undersides without tracing the whole frame again.
+        val hitStatic = bounce == 0
+
         // Cylinders
-        val cc = scene.cylinderCount
+        val cc = if (hitStatic) scene.cylinderCount else 0
         i = 0
         while (i < cc) {
             val t = hitCylinder(
@@ -162,7 +166,7 @@ class RayTracer {
         }
 
         // Boxes
-        val bc = scene.boxCount
+        val bc = if (hitStatic) scene.boxCount else 0
         i = 0
         while (i < bc) {
             val t = hitAabb(
@@ -190,7 +194,7 @@ class RayTracer {
         }
 
         // Floor plane
-        if (dy < -1e-6f || dy > 1e-6f) {
+        if (hitStatic && (dy < -1e-6f || dy > 1e-6f)) {
             val t = (scene.floorY - oy) / dy
             if (t > 1e-3f && t < bestT) {
                 val fx = ox + dx * t
@@ -266,6 +270,14 @@ class RayTracer {
                 ab = 0.175f
                 f0 = 0.68f
             }
+            MAT_MIRROR -> {
+                metal = 1f
+                rough = 0.02f
+                ar = 1f
+                ag = 1f
+                ab = 1f
+                f0 = 0.96f
+            }
             MAT_CERAMIC -> {
                 metal = 0f
                 rough = 0.35f
@@ -300,7 +312,7 @@ class RayTracer {
         var lr = 0.028f
         var lg = 0.026f
         var lb = 0.024f
-        accumLight(px, py, pz, nx, ny, nz, -7.5f, 15.5f, 11.5f, 1.55f, 1.0f, 0.97f, 0.92f, castShadow = true) { dr, dg, db ->
+        accumLight(px, py, pz, nx, ny, nz, -7.5f, 15.5f, 11.5f, 1.55f, 1.0f, 0.97f, 0.92f, castShadow = bounce == 0) { dr, dg, db ->
             lr += dr
             lg += dg
             lb += db
@@ -315,12 +327,27 @@ class RayTracer {
             lg += dg
             lb += db
         }
+        // Bounce from the polished base so ball undersides stay readable in the mirror
+        val ground = (-ny).coerceAtLeast(0f) * 0.28f
+        lr += ground * 0.42f
+        lg += ground * 0.44f
+        lb += ground * 0.48f
 
-        var r = ar * lr
-        var g = ag * lg
-        var b = ab * lb
+        val isMirror = mat == MAT_MIRROR
+        var r: Float
+        var g: Float
+        var b: Float
+        if (isMirror) {
+            r = 0.018f * lr
+            g = 0.018f * lg
+            b = 0.020f * lb
+        } else {
+            r = ar * lr
+            g = ag * lg
+            b = ab * lb
+        }
 
-        val doReflect = metal > 0.2f || (mat == MAT_FLOOR && bounce == 0 && maxBounce >= 2)
+        val doReflect = metal > 0.2f || isMirror || (mat == MAT_FLOOR && bounce == 0)
         if (doReflect) {
             val two = 2f * (nx * idx + ny * idy + nz * idz)
             var rdx = idx - nx * two
@@ -334,18 +361,27 @@ class RayTracer {
             val ox = px + nx * 0.0025f
             val oy = py + ny * 0.0025f
             val oz = pz + nz * 0.0025f
-            if (bounce < maxBounce) {
-                trace(ox, oy, oz, rdx, rdy, rdz, bounce + 1, maxBounce)
+            val forceMirrorBounce = isMirror && bounce == 0
+            if (bounce < maxBounce || forceMirrorBounce) {
+                val nextMax = if (forceMirrorBounce) maxOf(maxBounce, 1) else maxBounce
+                trace(ox, oy, oz, rdx, rdy, rdz, bounce + 1, nextMax)
             } else {
                 StudioEnv.sample(rdx, rdy, rdz, envR, envG, envB, 0)
             }
             val rr = envR[0]
             val rg = envG[0]
             val rb = envB[0]
-            val km = (fres * (0.55f + 0.45f * metal)).coerceIn(0f, 1f)
-            r = r * (1f - km) + rr * ar * km
-            g = g * (1f - km) + rg * ag * km
-            b = b * (1f - km) + rb * ab * km
+            if (isMirror) {
+                val km = 0.94f
+                r = rr * km + r * (1f - km)
+                g = rg * km + g * (1f - km)
+                b = rb * km + b * (1f - km)
+            } else {
+                val km = (fres * (0.55f + 0.45f * metal)).coerceIn(0f, 1f)
+                r = r * (1f - km) + rr * ar * km
+                g = g * (1f - km) + rg * ag * km
+                b = b * (1f - km) + rb * ab * km
+            }
         }
 
         envR[0] = r
