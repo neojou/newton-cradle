@@ -1,6 +1,7 @@
 package com.neojou.newtoncradle.render
 
 import androidx.compose.ui.graphics.ImageBitmap
+import com.neojou.newtoncradle.sim.Cradle
 import com.neojou.newtoncradle.sim.CradleSnapshot
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -22,6 +23,9 @@ class RayTracer {
     private val envG = FloatArray(1)
     private val envB = FloatArray(1)
     private val dirScratch = FloatArray(3)
+    private val albedo = FloatArray(3)
+    private var frameId = 0
+    private var hitBox = -1
 
     fun render(
         snap: CradleSnapshot,
@@ -31,6 +35,7 @@ class RayTracer {
     ): ImageBitmap? {
         if (viewW < 8 || viewH < 8) return null
         scene.rebuild(snap)
+        frameId++
 
         val q = quality.coerceIn(0.12f, 1f)
         val maxDim = (320f + 400f * q).toInt()
@@ -91,8 +96,8 @@ class RayTracer {
                 }
                 val nx = (x + 0.5f) / wf * 2f - 1f
                 val ny = (y + 0.5f) / hf * 2f - 1f
-                val vig = 1f - 0.14f * (nx * nx + ny * ny)
-                buffer.putLinear(x, y, r * vig, g * vig, b * vig)
+                val vig = 1f - 0.28f * (nx * nx + ny * ny)
+                buffer.putCinematic(x, y, r * vig, g * vig, b * vig, frameId)
             }
         }
         return imageBitmapFromRgba(w, h, buffer.rgba)
@@ -115,6 +120,7 @@ class RayTracer {
         var ny = 0f
         var nz = 0f
         var mat = -1
+        hitBox = -1
 
         // Spheres
         val sc = scene.sphereCount
@@ -138,7 +144,7 @@ class RayTracer {
         // Event 0: full scene. Later events: spheres + mirrors + frame
         // (so the back wall can show the cradle). Cylinders only on the
         // primary ray — they are thin and expensive.
-        val hitCyl = bounce == 0
+        val hitCyl = bounce <= 1
         val hitBoxes = bounce == 0
 
         // Cylinders
@@ -193,6 +199,7 @@ class RayTracer {
                 ny = nrm[1]
                 nz = nrm[2]
                 mat = scene.bMat[i]
+                hitBox = i
             }
             i++
         }
@@ -223,7 +230,7 @@ class RayTracer {
         }
 
         if (mat < 0) {
-            StudioEnv.sample(dx, dy, dz, envR, envG, envB, 0)
+            lampMiss(ox, oy, oz, dx, dy, dz)
             return
         }
 
@@ -297,13 +304,62 @@ class RayTracer {
                 f0 = 0.08f
             }
             MAT_WOOD -> {
+                metal = 0.08f
+                rough = 0.42f
+                val uv = if (hitBox >= 0) {
+                    boxUv(
+                        scene.bMinX[hitBox], scene.bMinY[hitBox], scene.bMinZ[hitBox],
+                        scene.bMaxX[hitBox], scene.bMaxY[hitBox], scene.bMaxZ[hitBox],
+                        px, py, pz, nx, ny, nz,
+                    )
+                } else {
+                    0.5f to 0.5f
+                }
+                sampleSandalwood(uv.first, uv.second, nx, ny, nz, albedo)
+                ar = albedo[0]
+                ag = albedo[1]
+                ab = albedo[2]
+                f0 = 0.06f
+            }
+            MAT_SHADE -> {
                 metal = 0f
-                rough = 0.48f
-                val grain = 1f + 0.07f * sinish(px * 1.35f)
-                ar = 0.078f * grain
-                ag = 0.040f * grain
-                ab = 0.022f * grain
-                f0 = 0.045f
+                rough = 0.7f
+                ar = 0.16f
+                ag = 0.08f
+                ab = 0.03f
+                f0 = 0.04f
+            }
+            MAT_BULB -> {
+                metal = 0f
+                rough = 0.2f
+                ar = 1f
+                ag = 0.72f
+                ab = 0.28f
+                f0 = 0.02f
+            }
+            MAT_BRASS -> {
+                metal = 1f
+                rough = 0.22f
+                ar = 0.72f
+                ag = 0.48f
+                ab = 0.16f
+                f0 = 0.78f
+            }
+            MAT_VANITY -> {
+                metal = 0.12f
+                rough = 0.35f
+                ar = 0.018f
+                ag = 0.010f
+                ab = 0.008f
+                f0 = 0.08f
+            }
+            MAT_FRAME -> {
+                metal = 0.05f
+                rough = 0.5f
+                ar = 0.06f
+                ag = 0.025f
+                ab = 0.012f
+                f0 = 0.05f
             }
             else -> {
                 metal = 0.28f
@@ -327,31 +383,32 @@ class RayTracer {
             g = 0f
             b = 0f
         } else {
-            var lr = 0.028f
-            var lg = 0.026f
-            var lb = 0.024f
-            accumLight(px, py, pz, nx, ny, nz, -7.5f, 15.5f, 11.5f, 1.55f, 1.0f, 0.97f, 0.92f, castShadow = bounce == 0) { dr, dg, db ->
+            var lr = 0.004f
+            var lg = 0.002f
+            var lb = 0.0025f
+            accumLight(
+                px, py, pz, nx, ny, nz,
+                Cradle.LAMP_X, Cradle.LAMP_LIGHT_Y, Cradle.LAMP_Z,
+                26f, 1.0f, 0.58f, 0.22f,
+                castShadow = bounce == 0,
+            ) { dr, dg, db ->
                 lr += dr
                 lg += dg
                 lb += db
             }
-            accumLight(px, py, pz, nx, ny, nz, 11f, 8.5f, 7f, 0.32f, 0.65f, 0.78f, 1.0f, castShadow = false) { dr, dg, db ->
-                lr += dr
-                lg += dg
-                lb += db
-            }
-            accumLight(px, py, pz, nx, ny, nz, 5f, 7f, -10f, 0.42f, 1.0f, 0.82f, 0.62f, castShadow = false) { dr, dg, db ->
-                lr += dr
-                lg += dg
-                lb += db
-            }
-            val ground = (-ny).coerceAtLeast(0f) * 0.28f
-            lr += ground * 0.42f
-            lg += ground * 0.44f
-            lb += ground * 0.48f
             r = ar * lr
             g = ag * lg
             b = ab * lb
+            if (mat == MAT_BULB) {
+                r += 3.6f
+                g += 1.7f
+                b += 0.45f
+            } else if (mat == MAT_SHADE) {
+                val inner = (-(nx * idx + ny * idy + nz * idz)).coerceAtLeast(0f)
+                r += 0.22f * inner
+                g += 0.10f * inner
+                b += 0.03f * inner
+            }
         }
 
         val doReflect = metal > 0.2f || isMirror || (mat == MAT_FLOOR && bounce == 0)
@@ -371,7 +428,7 @@ class RayTracer {
             if (bounce < maxBounce) {
                 trace(ox, oy, oz, rdx, rdy, rdz, bounce + 1, maxBounce)
             } else {
-                StudioEnv.sample(rdx, rdy, rdz, envR, envG, envB, 0)
+                lampMiss(ox, oy, oz, rdx, rdy, rdz)
             }
             val rr = envR[0]
             val rg = envG[0]
@@ -436,6 +493,10 @@ class RayTracer {
         val sc = scene.sphereCount
         var i = 0
         while (i < sc) {
+            if (scene.sMat[i] == MAT_SHADE || scene.sMat[i] == MAT_BULB) {
+                i++
+                continue
+            }
             val t = hitSphere(ox, oy, oz, dx, dy, dz, scene.sX[i], scene.sY[i], scene.sZ[i], scene.sR[i], maxT)
             if (t > 0f) return true
             i++
@@ -453,6 +514,22 @@ class RayTracer {
             i++
         }
         return false
+    }
+
+    private fun lampMiss(ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float) {
+        val t = hitSphere(
+            ox, oy, oz, dx, dy, dz,
+            Cradle.LAMP_X, Cradle.LAMP_LIGHT_Y, Cradle.LAMP_Z, 0.42f, 1e8f,
+        )
+        if (t > 0f) {
+            envR[0] = 3.4f
+            envG[0] = 1.55f
+            envB[0] = 0.42f
+        } else {
+            envR[0] = 0.0012f
+            envG[0] = 0.0006f
+            envB[0] = 0.0009f
+        }
     }
 
     private val nTmp = FloatArray(3)

@@ -38,9 +38,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.neojou.newtoncradle.Res
 import com.neojou.newtoncradle.audio.playCollision
 import com.neojou.newtoncradle.render.RayTracer
+import com.neojou.newtoncradle.render.Textures
+import com.neojou.newtoncradle.render.decodeImageBytes
 import com.neojou.newtoncradle.render.isWasmTarget
+import org.jetbrains.compose.resources.ExperimentalResourceApi
 import com.neojou.newtoncradle.sim.Cradle
 import com.neojou.newtoncradle.sim.CradlePhysics
 import com.neojou.newtoncradle.sim.CradleSnapshot
@@ -71,6 +75,13 @@ fun CradleViewport(
     var hintVisible by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
+        @OptIn(ExperimentalResourceApi::class)
+        runCatching {
+            Textures.wood = decodeImageBytes(Res.readBytes("files/sandalwood.jpg"))
+            Textures.sasa = decodeImageBytes(Res.readBytes("files/kamon_sasa.jpg"))
+            Textures.hikiryo = decodeImageBytes(Res.readBytes("files/kamon_hikiryo.jpg"))
+            Textures.kuyou = decodeImageBytes(Res.readBytes("files/kamon_kuyou.jpg"))
+        }
         focusRequester.requestFocus()
         var lastNs = 0L
         var accLog = 0f

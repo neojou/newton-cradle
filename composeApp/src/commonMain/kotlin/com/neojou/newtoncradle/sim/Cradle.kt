@@ -27,12 +27,17 @@ object Cradle {
     const val POST_HALF = 0.185f
 
     const val BASE_TOP = -6.58f
-    const val BASE_BOTTOM = -7.62f
+    const val BASE_BOTTOM = -10.25f
     const val BASE_HALF_X = 14.4f
     const val BASE_HALF_Z = 7.35f
-    const val FLOOR_Y = -7.62f
+    const val FLOOR_Y = -10.25f
     const val MIRROR_Y = -6.505f
     const val BACK_WALL_Z = -11.2f
+
+    const val LAMP_X = 18.4f
+    const val LAMP_Z = 8.4f
+    const val LAMP_LIGHT_Y = -5.15f
+    const val VANITY_Y = -10.95f
 
     /** Tuned for a ~1 s period with the current swing length. */
     const val GRAVITY = 402f

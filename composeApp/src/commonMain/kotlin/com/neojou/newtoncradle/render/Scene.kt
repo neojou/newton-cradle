@@ -11,9 +11,9 @@ internal const val MAT_FLOOR = 4
 internal const val MAT_GUNMETAL = 5
 internal const val MAT_MIRROR = 6
 
-internal const val MAX_SPHERES = 24
-internal const val MAX_CYLINDERS = 8
-internal const val MAX_BOXES = 10
+internal const val MAX_SPHERES = 28
+internal const val MAX_CYLINDERS = 12
+internal const val MAX_BOXES = 24
 internal const val MAX_PLANES = 4
 
 /**
@@ -152,6 +152,8 @@ internal class Scene {
         }
 
         addStaticFrame()
+        addVanity()
+        addLamp()
     }
 
     private fun addStaticFrame() {
@@ -182,6 +184,29 @@ internal class Scene {
         addCylinder(-px - 0.12f, rodY, bz, px + 0.12f, rodY, bz, rodR, MAT_STEEL)
     }
 
+    private fun addVanity() {
+        val ty = Cradle.VANITY_Y
+        val top = Cradle.BASE_BOTTOM
+        addBox(-20f, ty, -9.2f, 26.5f, top, 9.6f, MAT_VANITY)
+        val z = Cradle.BACK_WALL_Z
+        // Mirror frame
+        addBox(-17.5f, ty, z - 0.22f, 17.5f, 16.4f, z - 0.04f, MAT_FRAME)
+        addBox(-17.5f, 15.6f, z - 0.04f, 17.5f, 16.4f, z + 0.18f, MAT_BRASS)
+        addBox(-17.5f, ty, z - 0.04f, 17.5f, ty + 0.75f, z + 0.18f, MAT_BRASS)
+        addBox(-17.5f, ty, z - 0.04f, -16.6f, 16.4f, z + 0.18f, MAT_BRASS)
+        addBox(16.6f, ty, z - 0.04f, 17.5f, 16.4f, z + 0.18f, MAT_BRASS)
+    }
+
+    private fun addLamp() {
+        val x = Cradle.LAMP_X
+        val z = Cradle.LAMP_Z
+        val table = Cradle.BASE_BOTTOM
+        addBox(x - 0.85f, table, z - 0.85f, x + 0.85f, table + 0.18f, z + 0.85f, MAT_BRASS)
+        addCylinder(x, table + 0.18f, z, x, Cradle.LAMP_LIGHT_Y - 0.15f, z, 0.13f, MAT_BRASS)
+        addCylinder(x, Cradle.LAMP_LIGHT_Y - 0.05f, z, x, Cradle.LAMP_LIGHT_Y + 1.55f, z, 1.15f, MAT_SHADE)
+        addSphere(x, Cradle.LAMP_LIGHT_Y, z, 0.38f, MAT_BULB)
+    }
+
     /**
      * Planar mirrors used by the single-path specular walker.
      * Perfect planes do not branch: the ray is folded and continues.
@@ -198,18 +223,11 @@ internal class Scene {
         val z = Cradle.BACK_WALL_Z
         addPlane(
             0f, 0f, 1f, z,
-            -36f, 36f,
-            -9f, 24f,
+            -16.6f, 16.6f,
+            Cradle.VANITY_Y + 0.8f, 15.6f,
             z - 0.02f, z + 0.02f,
             MAT_MIRROR,
         )
-        val fy = Cradle.FLOOR_Y
-        addPlane(
-            0f, 1f, 0f, fy,
-            -36f, 36f,
-            fy - 0.02f, fy + 0.02f,
-            z, 22f,
-            MAT_MIRROR,
-        )
+        // Vanity mirror only — the table itself is wood, not a second floor mirror.
     }
 }
