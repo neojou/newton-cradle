@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,41 +23,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.neojou.newtoncradle.sim.CradlePhysics
+import com.neojou.newtoncradle.ui.CradleViewport
 import com.neojou.tools.LogLevel
 import com.neojou.tools.MyLog
 import com.neojou.tools.ui.menu.MyTopMenuBar
 import com.neojou.tools.ui.menu.MyTopMenuItem
 
-/**
- * Log tag used by [StockViewer] for logging UI events.
- */
 private const val TAG = "NewtonCradle"
 
-/**
- * Main content modes for the shell area below the toolbar.
- */
-private enum class MainContent {
-    /** Default placeholder until a feature is chosen. */
-    Home,
-
-    /** Daily candlestick + volume chart (viewport pan/zoom). */
-    KChart,
-}
-
-/**
- * Primary application shell.
- *
- * Hosts a product-configured [MyTopMenuBar] and content area.
- * - Database → Input / View / Export / Import
- * - K Chart → View / Settings（均線 + KD + MACD 參數）
- */
 @Composable
 fun NewtonCradle() {
     var showAbout by remember { mutableStateOf(false) }
+    val physics = remember { CradlePhysics() }
 
-    // Product-specific menu tree only; [MyTopMenuBar] stays app-agnostic.
-    // Rebuilt each composition so callbacks always see current shell state.
     val topMenus = listOf(
+        MyTopMenuItem(
+            id = "reset",
+            label = "重置",
+            onClick = { physics.reset() },
+        ),
+        MyTopMenuItem(
+            id = "release",
+            label = "放下",
+            onClick = { physics.release() },
+        ),
         MyTopMenuItem(
             id = "about",
             label = "About",
@@ -70,25 +59,17 @@ fun NewtonCradle() {
         MyLog.add(TAG, "Enter", LogLevel.DEBUG)
     }
 
-    Scaffold(
-        topBar = {
-            MyTopMenuBar(items = topMenus)
-        },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(AppVersion.APP_NAME_EN)
-        }
+    Box(Modifier.fillMaxSize()) {
+        CradleViewport(
+            physics = physics,
+            modifier = Modifier.fillMaxSize(),
+        )
+        MyTopMenuBar(items = topMenus)
     }
 
     if (showAbout) {
         AboutDialog(onDismiss = { showAbout = false })
     }
-
 }
 
 @Composable
@@ -142,4 +123,3 @@ private fun AboutDialog(onDismiss: () -> Unit) {
         }
     }
 }
-

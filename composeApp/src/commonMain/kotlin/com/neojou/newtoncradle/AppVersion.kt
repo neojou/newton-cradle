@@ -27,5 +27,5 @@ object AppVersion {
     const val DISPLAY: String = "v$NAME"
 
     /** One-line blurb for About. */
-    const val SUMMARY: String = "牛頓擺模擬"
+    const val SUMMARY: String = "五顆鋼球、彈性碰撞、無能量損耗的牛頓擺"
 }
