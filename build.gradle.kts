@@ -1,7 +1,5 @@
 // Root build — plugins applied by subprojects only.
-// Coexists with the Vite/npm SPA (package.json); does not replace it.
+// :composeApp is the kool 0.19.0 app (desktop JVM + browser JS). There is no root package.json.
 plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
-    alias(libs.plugins.composeMultiplatform) apply false
-    alias(libs.plugins.composeCompiler) apply false
 }

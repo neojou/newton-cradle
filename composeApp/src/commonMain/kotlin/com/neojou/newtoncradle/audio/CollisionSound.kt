@@ -1,15 +1,19 @@
 package com.neojou.newtoncradle.audio
 
-/**
- * Must run inside a user gesture on mobile browsers (touch down) so the
- * AudioContext is allowed to start. Safe no-op after the first call.
- */
-expect fun unlockAudio()
+import de.fabmax.kool.modules.audio.AudioClip
 
 /**
- * Play the shared steel-clang sample. [strength] is 0..1 from impact speed.
+ * Plays [clang.wav] from the analytic impact strength (`CradlePhysics.takeImpact`).
  */
-expect fun playCollision(strength: Float)
+class CollisionSound(private val clip: AudioClip) {
+    init {
+        clip.minIntervalMs = 48f
+    }
 
-/** Desktop loads the WAV from Compose resources; Wasm fetches `clang.wav`. */
-expect fun loadCollisionWav(bytes: ByteArray)
+    fun playImpact(strength: Float) {
+        if (strength <= 0f) return
+        clip.volume = 0.22f + 0.78f * strength.coerceIn(0f, 1f)
+        clip.currentTime = 0f
+        clip.play()
+    }
+}

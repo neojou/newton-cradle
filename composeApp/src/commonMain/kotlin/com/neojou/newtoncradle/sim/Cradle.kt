@@ -46,10 +46,14 @@ object Cradle {
 
     const val MASS = 1f
 
-    fun pivotX(index: Int): Float = (index - 2) * (2f * RADIUS)
+    /**
+     * Centered row. [balls] == [BALLS] (5) is `(index - 2) * 2 * RADIUS`.
+     */
+    fun pivotX(index: Int, balls: Int = BALLS): Float =
+        (index - (balls - 1) * 0.5f) * (2f * RADIUS)
 
-    fun ballX(index: Int, theta: Float): Float =
-        pivotX(index) + SWING_L * sin(theta)
+    fun ballX(index: Int, theta: Float, balls: Int = BALLS): Float =
+        pivotX(index, balls) + SWING_L * sin(theta)
 
     fun ballY(index: Int, theta: Float): Float =
         PIVOT_Y - SWING_L * cos(theta)
@@ -79,8 +83,8 @@ data class Vec3(val x: Float, val y: Float, val z: Float) {
     }
 }
 
-fun ballCenter(index: Int, theta: Float): Vec3 =
-    Vec3(Cradle.ballX(index, theta), Cradle.ballY(index, theta), 0f)
+fun ballCenter(index: Int, theta: Float, balls: Int = Cradle.BALLS): Vec3 =
+    Vec3(Cradle.ballX(index, theta, balls), Cradle.ballY(index, theta), 0f)
 
-fun stringPivot(index: Int, side: Float): Vec3 =
-    Vec3(Cradle.pivotX(index), Cradle.PIVOT_Y, Cradle.BAR_Z * side)
+fun stringPivot(index: Int, side: Float, balls: Int = Cradle.BALLS): Vec3 =
+    Vec3(Cradle.pivotX(index, balls), Cradle.PIVOT_Y, Cradle.BAR_Z * side)

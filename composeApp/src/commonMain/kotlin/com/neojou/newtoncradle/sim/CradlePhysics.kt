@@ -6,16 +6,18 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Five equal pendulums with perfectly elastic, equal-mass collisions.
+ * Equal pendulums with perfectly elastic, equal-mass collisions.
  *
  * Sequential pairwise swaps propagate momentum through a contacting stack
  * (the ideal Newton's-cradle result). After release, kinetic energy is
  * gently renormalized to the energy at the moment of release so the motion
  * repeats without numerical drain.
+ *
+ * [ballCount] defaults to [Cradle.BALLS]. The integrator thresholds are unchanged.
  */
-class CradlePhysics {
-    val theta = FloatArray(Cradle.BALLS)
-    val omega = FloatArray(Cradle.BALLS)
+class CradlePhysics(val ballCount: Int = Cradle.BALLS) {
+    val theta = FloatArray(ballCount)
+    val omega = FloatArray(ballCount)
 
     var holding: Boolean = false
         private set
@@ -34,7 +36,7 @@ class CradlePhysics {
     }
 
     fun reset() {
-        for (i in 0 until Cradle.BALLS) {
+        for (i in 0 until ballCount) {
             theta[i] = 0f
             omega[i] = 0f
         }
@@ -63,7 +65,7 @@ class CradlePhysics {
     )
 
     fun tryGrab(index: Int): Boolean {
-        if (index != 0 && index != Cradle.BALLS - 1) return false
+        if (index != 0 && index != ballCount - 1) return false
         holdIndex = index
         holding = true
         omega[index] = 0f
@@ -115,14 +117,24 @@ class CradlePhysics {
         if (lockEnergy) restoreEnergy()
     }
 
+    /** Translational kinetic energy, without the large potential offset. */
+    fun kineticEnergy(): Float {
+        var ke = 0f
+        for (i in 0 until ballCount) {
+            val speed = Cradle.speed(omega[i])
+            ke += 0.5f * Cradle.MASS * speed * speed
+        }
+        return ke
+    }
+
     fun angleFromWorld(x: Float, y: Float, index: Int): Float {
-        val px = Cradle.pivotX(index)
+        val px = pivotOf(index)
         return atan2(x - px, Cradle.PIVOT_Y - y)
     }
 
     private fun integrate(h: Float) {
         val accel = Cradle.GRAVITY / Cradle.SWING_L
-        for (i in 0 until Cradle.BALLS) {
+        for (i in 0 until ballCount) {
             if (holding && i == holdIndex) continue
             omega[i] += -accel * sin(theta[i]) * h
             theta[i] += omega[i] * h
@@ -132,8 +144,8 @@ class CradlePhysics {
     private fun resolveCollisions() {
         transferChainRight()
         transferChainLeft()
-        for (i in 0 until Cradle.BALLS - 1) separatePair(i, i + 1)
-        for (i in 0 until Cradle.BALLS) {
+        for (i in 0 until ballCount - 1) separatePair(i, i + 1)
+        for (i in 0 until ballCount) {
             if (holding && i == holdIndex) continue
             if (kotlin.math.abs(omega[i]) < 0.018f && kotlin.math.abs(theta[i]) < 0.012f) {
                 omega[i] = 0f
@@ -148,12 +160,12 @@ class CradlePhysics {
      */
     private fun transferChainRight() {
         var i = 0
-        while (i < Cradle.BALLS - 1) {
+        while (i < ballCount - 1) {
             if (inContact(i, i + 1, slack = 0.10f) && approaching(i, i + 1) &&
                 omega[i] > 0.05f && kotlin.math.abs(omega[i + 1]) < 0.28f
             ) {
                 var k = i + 1
-                while (k < Cradle.BALLS - 1 &&
+                while (k < ballCount - 1 &&
                     inContact(k, k + 1, slack = 0.10f) &&
                     kotlin.math.abs(omega[k + 1]) < 0.28f
                 ) {
@@ -171,7 +183,7 @@ class CradlePhysics {
     }
 
     private fun transferChainLeft() {
-        var j = Cradle.BALLS - 1
+        var j = ballCount - 1
         while (j > 0) {
             if (inContact(j - 1, j, slack = 0.10f) && approaching(j - 1, j) &&
                 omega[j] < -0.05f && kotlin.math.abs(omega[j - 1]) < 0.28f
@@ -202,16 +214,16 @@ class CradlePhysics {
     }
 
     private fun inContact(i: Int, j: Int, slack: Float): Boolean {
-        val dx = Cradle.ballX(j, theta[j]) - Cradle.ballX(i, theta[i])
+        val dx = xOf(j, theta[j]) - xOf(i, theta[i])
         val dy = Cradle.ballY(j, theta[j]) - Cradle.ballY(i, theta[i])
         val minD = 2f * Cradle.RADIUS + slack
         return dx * dx + dy * dy < minD * minD
     }
 
     private fun approaching(i: Int, j: Int): Boolean {
-        val x0 = Cradle.ballX(i, theta[i])
+        val x0 = xOf(i, theta[i])
         val y0 = Cradle.ballY(i, theta[i])
-        val x1 = Cradle.ballX(j, theta[j])
+        val x1 = xOf(j, theta[j])
         val y1 = Cradle.ballY(j, theta[j])
         val dx = x1 - x0
         val dy = y1 - y0
@@ -223,9 +235,9 @@ class CradlePhysics {
     }
 
     private fun separatePair(i: Int, j: Int) {
-        val x0 = Cradle.ballX(i, theta[i])
+        val x0 = xOf(i, theta[i])
         val y0 = Cradle.ballY(i, theta[i])
-        val x1 = Cradle.ballX(j, theta[j])
+        val x1 = xOf(j, theta[j])
         val y1 = Cradle.ballY(j, theta[j])
         val dx = x1 - x0
         val dy = y1 - y0
@@ -241,12 +253,12 @@ class CradlePhysics {
         if (!heldI) {
             val nx0 = x0 - nx * push
             val ny0 = y0 - ny * push
-            theta[i] = atan2(nx0 - Cradle.pivotX(i), Cradle.PIVOT_Y - ny0)
+            theta[i] = atan2(nx0 - pivotOf(i), Cradle.PIVOT_Y - ny0)
         }
         if (!heldJ) {
             val nx1 = x1 + nx * push
             val ny1 = y1 + ny * push
-            theta[j] = atan2(nx1 - Cradle.pivotX(j), Cradle.PIVOT_Y - ny1)
+            theta[j] = atan2(nx1 - pivotOf(j), Cradle.PIVOT_Y - ny1)
         }
     }
 
@@ -258,7 +270,7 @@ class CradlePhysics {
 
     private fun totalEnergy(): Float {
         var e = 0f
-        for (i in 0 until Cradle.BALLS) {
+        for (i in 0 until ballCount) {
             val speed = Cradle.speed(omega[i])
             e += 0.5f * Cradle.MASS * speed * speed
             e += Cradle.MASS * Cradle.GRAVITY * Cradle.ballY(i, theta[i])
@@ -269,7 +281,7 @@ class CradlePhysics {
     private fun restoreEnergy() {
         var ke = 0f
         var pe = 0f
-        for (i in 0 until Cradle.BALLS) {
+        for (i in 0 until ballCount) {
             val speed = Cradle.speed(omega[i])
             ke += 0.5f * Cradle.MASS * speed * speed
             pe += Cradle.MASS * Cradle.GRAVITY * Cradle.ballY(i, theta[i])
@@ -277,7 +289,7 @@ class CradlePhysics {
         val targetKe = energyLock - pe
         if (ke > 1e-6f && targetKe > 0f) {
             val scale = sqrt(targetKe / ke)
-            for (i in 0 until Cradle.BALLS) {
+            for (i in 0 until ballCount) {
                 omega[i] *= scale
             }
         }
@@ -287,9 +299,9 @@ class CradlePhysics {
         val neighbor = if (index == 0) 1 else index - 1
         var a = angle
         repeat(8) {
-            val x0 = Cradle.ballX(index, a)
+            val x0 = xOf(index, a)
             val y0 = Cradle.ballY(index, a)
-            val x1 = Cradle.ballX(neighbor, theta[neighbor])
+            val x1 = xOf(neighbor, theta[neighbor])
             val y1 = Cradle.ballY(neighbor, theta[neighbor])
             val dx = x1 - x0
             val dy = y1 - y0
@@ -299,6 +311,10 @@ class CradlePhysics {
         }
         return a
     }
+
+    private fun xOf(index: Int, angle: Float): Float = Cradle.ballX(index, angle, ballCount)
+
+    private fun pivotOf(index: Int): Float = Cradle.pivotX(index, ballCount)
 }
 
 class CradleSnapshot(
